@@ -22,8 +22,28 @@ LL_params = {
 }
 
 class PoseEstimation():
+    """Camera-based pose estimation simulation
+
+    Input is a set of truth camera poses specified as a translation and rotation (yaw pitch roll) from the goal. Offsets
+    can be added to create a set of adjusted camera poses (i.e. camera misalignment).
+
+    Using the adjusted camera poses and a target model, image points are generated for the target. Gaussian pixel noise
+    can be added to these image points.
+
+    One of several different algorithms can then be called to estimate the camera pose using these noisy image points:
+
+    1. "vanilla" solvePnP (cv.SOLVEPNP_ITERATIVE)
+    2. 2D homography without refinement
+    3. centroid -> distance + yaw -> constrained refinement
+    4. solvePnP (cv.SOLVEPNP_IPPE) -> constrained refinement
+
+    OpenCV coordinate system convention is used: +X is right, +Y is down and +Z is out of the camera. The class supports
+    arbitrary shaped stacks of ndarrays (i.e. (M1,...,MM,<vector/matrix shape>)).
+    """
 
     def __init__(self, camera_params=LL_params):
+        """Initializes camera params and generates target
+        """
         
         self.K = camera_params['camera_matrix']
         self.K_inv = np.linalg.inv(self.K)
@@ -32,10 +52,31 @@ class PoseEstimation():
         self.results = {}
 
     def m_idx(self, x, idx, ndim=1):
+        """Helper function to index into stack of ndarrays
+
+        The stack x has shape (M1,...,MM,N1,...,NN) and an array of shape (N1,..,NN) is returned
+
+        len(idx) + ndim = x.ndim
+
+        Args:
+            x (ndarray): stack of ndarrays
+            idx (tuple): tuple of indices
+            ndim (int, optional): number of dimensions of returned array
+
+        Returns:
+            ndarray: ndarray at idx
+        """
 
         return np.broadcast_to(x, self.m+x.shape[-ndim:])[idx]
 
     def setup_truth(self, ypr_wc_truth, t_wc_truth, n=1):
+        """Computes true pose of camera (T_wc) and generates noiseless image points
+
+        Args:
+            ypr_wc_truth (ndarray): yaw pitch roll of camera
+            t_wc_truth (ndarray): translation of camera
+            n (int, optional): number of repetitions over all points
+        """
 
         self.m = np.broadcast_shapes(ypr_wc_truth.shape[:-1], t_wc_truth.shape[:-1])
 
@@ -60,6 +101,12 @@ class PoseEstimation():
         self.calc_adj()
 
     def add_camera_offset(self, ypr_c_offset, t_c_offset):
+        """Add an offset to the true camera pose (i.e. camera is misaligned)
+
+        Args:
+            ypr_c_offset (ndarray): yaw pitch roll to offset camera (note that angles are added to true ypr rather than composing two ypr rotations)
+            t_c_offset (ndarray): translation to offset camera
+        """
 
         self.ypr_c_offset = self.ypr_c_offset + ypr_c_offset
         self.t_c_offset = self.t_c_offset + t_c_offset
@@ -67,6 +114,11 @@ class PoseEstimation():
         self.calc_adj()
 
     def add_img_noise(self, sigma=1):
+        """Add gaussian noise to image points
+
+        Args:
+            sigma (int, optional): standard deviation of noise to add (in pixels)
+        """
 
         new_target_c_noise = np.zeros(self.m+self.target_c.shape[-2:])
         new_target_c_noise[...,:-1,:] = sigma * rng.standard_normal(size=new_target_c_noise[...,:-1,:].shape)
@@ -76,6 +128,8 @@ class PoseEstimation():
         self.calc_adj()
 
     def calc_adj(self):
+        """Helper function to calculate adjusted pose of camera (T_wc) and generate noisy image points
+        """
 
         self.ypr_wc_adj = self.ypr_wc_truth + self.ypr_c_offset
         self.t_wc_adj = self.t_wc_truth + self.t_c_offset
@@ -91,6 +145,8 @@ class PoseEstimation():
         self.target_c_jit = self.target_c_noise + self.target_c_adj
 
     def get_empty_result(self):
+        """Helper function to return an empty result dict
+        """
 
         result = {
             'elapsed' : 0,
@@ -103,6 +159,12 @@ class PoseEstimation():
         return result
 
     def run_solve_pnp(self,name='solve_pnp'):
+        """Estimates pose of camera using "vanilla" openCV solvePnP (cv.SOLVEPNP_ITERATIVE)
+        
+        1. compute a 2D homography H between (planar) world points and image points
+        2. decompose H into R_cw and t_cw (rvec and tvec)
+        3. iteratively refine R_cw and t_cw using Levenberg–Marquardt to minimize reprojection error
+        """
 
         result = self.get_empty_result()
         start = time.time()
@@ -124,6 +186,11 @@ class PoseEstimation():
         self.results[name] = result
 
     def run_homography(self,name='homography'):
+        """Estimates pose of camera using 2D homography without refinement
+        
+        1. compute a 2D homography H between (planar) world points and image points
+        2. decompose H into R_cw and t_cw
+        """
 
         result = self.get_empty_result()
         start = time.time()
@@ -146,6 +213,19 @@ class PoseEstimation():
         self.results[name] = result
 
     def run_centroid_solve(self,name='centroid_solve',use_homography=True):
+        """Estimates pose of camera using distance + yaw to centroid and constrained refinement of skew
+        
+        use_homography=True:
+        1. compute a 2D homography H between (planar) world points and image points
+        2. use homography to determine centroid of target in image
+        use_homography=False:
+        1. use contour moments to estimate centroid of target
+
+        pose calculation:
+        1. determine distance (d) and yaw (alpha) to centroid using atan + pythagorean theorem + known heights + camera pitch
+        2. assume camera is in front of target (no skew)
+        3. refine skew using Levenberg–Marquardt to minimize reprojection error
+        """
 
         result = self.get_empty_result()
         start = time.time()
@@ -187,6 +267,11 @@ class PoseEstimation():
         self.results[name] = result
 
     def run_constrained_lm(self,name='constrained_lm'):
+        """Estimates pose of camera using openCV solvePnP (cv.SOLVEPNP_IPPE) and constrained refinement
+        
+        1. use IPPE method to obtain initial R_cw and t_cw (https://link.springer.com/article/10.1007%2Fs11263-014-0725-5)
+        2. given known heights + camera pitch, refine x, z, yaw using Levenberg–Marquardt to minimize reprojection error
+        """
 
         result = self.get_empty_result()
         start = time.time()
@@ -223,6 +308,11 @@ class PoseEstimation():
         self.results[name] = result
 
     def plot_goal(self,runs=None):
+        """Goal visualization for first camera pose in stack
+
+        Args:
+            runs (list, optional): list of run names
+        """
 
         idx = tuple([0,] * len(self.m))
 
@@ -262,6 +352,11 @@ class PoseEstimation():
         return fig, ax
 
     def plot_dispersion(self,runs=None):
+        """Top down view of estimated pose (x and z)
+
+        Args:
+            runs (list, optional): list of run names
+        """
 
         fig, ax = plt.subplots()
 
@@ -277,6 +372,12 @@ class PoseEstimation():
         return fig, ax
 
     def plot_violin(self,runs=None,filter=False):
+        """Violin plot of distributions for rotation and translation components of estimated pose
+
+        Args:
+            runs (list, optional): list of run names
+            filter (bool, optional): whether to include estimates with negative y (camera higher than target)
+        """
 
         fig_t, ax_t = plt.subplots(3,1)
         fig_r, ax_r = plt.subplots(3,1)
@@ -309,6 +410,8 @@ class PoseEstimation():
         return (fig_t, fig_r), (ax_t, ax_r)
 
     def print_elapsed(self,runs=None):
+        """Computation time for individual algorithms
+        """
 
         for k in (runs if runs else self.results.keys()):
             print(f"{k}: {self.results[k]['elapsed']} seconds")
