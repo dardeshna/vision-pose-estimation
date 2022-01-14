@@ -199,7 +199,7 @@ First, the transformation matrix can be rewritten in terms of the camera yaw, pi
 Then a new minimization problem can be constructed in terms of the camera pose rather than $\mathbf{r}_{cw}$ and $\mathbf{t}_{cw}$. This can also be solved using Levenberg–Marquardt, holding $Y_{wc}$, $\beta_{wc}$ and $\gamma_{wc}$ constant.
 \begin{gather*}
     \hat{\mathbf{p}}=\mathbf{K} \mathbf{R}_y(\alpha_{wc}) \mathbf{R}_x(\beta_{wc}) \mathbf{R}_z(\gamma_{wc}) \onebytwo{\mathbf{I}_{3 \times 3}}{\begin{matrix}-X_{wc} \\ -Y_{wc} \\ -Z_{wc}\end{matrix}}  \mathbf{P}_w \\
-    \min_{\alpha_{wc}, X_{wc}, Y_{wc}} \quad \sum_{k=1}^{n}{||\mathbf{p}^{(k)}-\mathbf{\hat{p}}^{(k)}(\alpha_{wc}, X_{wc}, Y_{wc})||^2}
+    \min_{\alpha_{wc}, X_{wc}, Z_{wc}} \quad \sum_{k=1}^{n}{||\mathbf{p}^{(k)}-\mathbf{\hat{p}}^{(k)}(\alpha_{wc}, X_{wc}, Z_{wc})||^2}
 \end{gather*}
 
 Even if $Y_{wc}$, $\beta_{wc}$ and $\gamma_{wc}$ cannot be determined reliably from physical measurements or CAD models, they can be calibrated ahead of time by averaging several measurements from a standard PnP algorithm. These values can then be treated as constants and re-calibrated as necessary.
