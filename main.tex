@@ -193,12 +193,12 @@ PnP also assumes that the camera can be located anywhere in 3D space. However, i
 
 First, the transformation matrix can be rewritten in terms of the camera yaw, pitch, roll and XYZ translation:
 \begin{align*}
-    \onebytwo{\mathbf{R}_{cw}}{\mathbf{t}_{cw}} = \mathbf{R}_{wc} \onebytwo{\mathbf{I}_{3 \times 3}}{-\mathbf{t}_{wc}} = \mathbf{R}_y(\alpha_{wc}) \mathbf{R}_x(\beta_{wc}) \mathbf{R}_z(\gamma_{wc}) \onebytwo{\mathbf{I}_{3 \times 3}}{\begin{matrix}-X_{wc} \\ -Y_{wc} \\ -Z_{wc}\end{matrix}} 
+    \onebytwo{\mathbf{R}_{cw}}{\mathbf{t}_{cw}} = \onebytwo{\mathbf{R}_{wc}^T}{-\mathbf{R}_{wc}^T\mathbf{t}_{wc}} = \mathbf{R}_z(-\gamma_{wc}) \mathbf{R}_x(-\beta_{wc}) \mathbf{R}_y(-\alpha_{wc}) \onebytwo{\mathbf{I}_{3 \times 3}}{\begin{matrix}-X_{wc} \\ -Y_{wc} \\ -Z_{wc}\end{matrix}} 
 \end{align*}
 
 Then a new minimization problem can be constructed in terms of the camera pose rather than $\mathbf{r}_{cw}$ and $\mathbf{t}_{cw}$. This can also be solved using Levenberg–Marquardt, holding $Y_{wc}$, $\beta_{wc}$ and $\gamma_{wc}$ constant.
 \begin{gather*}
-    \hat{\mathbf{p}}=\mathbf{K} \mathbf{R}_y(\alpha_{wc}) \mathbf{R}_x(\beta_{wc}) \mathbf{R}_z(\gamma_{wc}) \onebytwo{\mathbf{I}_{3 \times 3}}{\begin{matrix}-X_{wc} \\ -Y_{wc} \\ -Z_{wc}\end{matrix}}  \mathbf{P}_w \\
+    \hat{\mathbf{p}}=\mathbf{K} \mathbf{R}_z(-\gamma_{wc}) \mathbf{R}_x(-\beta_{wc}) \mathbf{R}_y(-\alpha_{wc}) \onebytwo{\mathbf{I}_{3 \times 3}}{\begin{matrix}-X_{wc} \\ -Y_{wc} \\ -Z_{wc}\end{matrix}}  \mathbf{P}_w \\
     \min_{\alpha_{wc}, X_{wc}, Z_{wc}} \quad \sum_{k=1}^{n}{||\mathbf{p}^{(k)}-\mathbf{\hat{p}}^{(k)}(\alpha_{wc}, X_{wc}, Z_{wc})||^2}
 \end{gather*}
 
